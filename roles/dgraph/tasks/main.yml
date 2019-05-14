@@ -1,2 +1,314 @@
 ---
-# tasks file for dgraph
+- name: "create ImageStreamTag for Dgraph"
+  k8s:
+    definition:
+      kind: "ImageStream"
+      apiVersion: "image.openshift.io/v1"
+      metadata:
+        name: "dgraph"
+        namespace: "{{ meta.namespace }}"
+      spec:
+        lookupPolicy:
+          local: true
+        tags:
+        - name: "{{ version }}"
+          from:
+            kind: "DockerImage"
+            name: "docker.io/dgraph/dgraph:{{ version }}"
+          referencePolicy:
+            type: "Local"
+
+- name: "create Service: Zero"
+  k8s:
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: zero-public
+        namespace: "{{ meta.namespace }}"
+        labels:
+          app: dgraph
+          component: zero
+      spec:
+        type: LoadBalancer
+        ports:
+          - port: 5080
+            targetPort: 5080
+            name: zero-grpc
+          - port: 6080
+            targetPort: 6080
+            name: zero-rest
+        selector:
+          app: dgraph
+
+- name: "create Service: Alpha"
+  k8s:
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: alpha-public
+        namespace: "{{ meta.namespace }}"
+        labels:
+          app: dgraph
+          component: alpha
+      spec:
+        type: LoadBalancer
+        ports:
+          - port: 8080
+            targetPort: 8080
+            name: alpha-rest
+          - port: 9080
+            targetPort: 9080
+            name: alpha-grpc
+        selector:
+          app: dgraph
+
+- name: "create Route: Zero"
+  k8s:
+    definition:
+      apiVersion: "route.openshift.io/v1"
+      kind: Route
+      metadata:
+        labels:
+          app: dgraph
+          component: zero
+        name: zero-rest
+        namespace: "{{ meta.namespace }}"
+      spec:
+        host: "{{ zero.hostname.rest }}"
+        port:
+          targetPort: zero-rest
+        to:
+          kind: Service
+          name: zero-public
+          weight: 100
+        wildcardPolicy: None
+
+- name: "create Route: Alpha REST"
+  k8s:
+    definition:
+      apiVersion: "route.openshift.io/v1"
+      kind: Route
+      metadata:
+        labels:
+          app: dgraph
+          component: alpha
+        name: alpha-rest
+        namespace: "{{ meta.namespace }}"
+      spec:
+        host: "{{ alpha.hostname.rest }}"
+        port:
+          targetPort: alpha-rest
+        tls:
+          termination: passthrough
+        to:
+          kind: Service
+          name: alpha-public
+          weight: 100
+        wildcardPolicy: None
+
+- name: "create Route: Alpha gRPC"
+  k8s:
+    definition:
+      apiVersion: "route.openshift.io/v1"
+      kind: Route
+      metadata:
+        labels:
+          app: dgraph
+          component: alpha
+        name: alpha-grpc
+        namespace: "{{ meta.namespace }}"
+      spec:
+        host: "{{ alpha.hostname.grpc }}"
+        port:
+          targetPort: alpha-grpc
+        tls:
+          termination: passthrough
+        to:
+          kind: Service
+          name: alpha-public
+          weight: 100
+        wildcardPolicy: None
+
+- name: "create StatefulSet: Zero"
+  k8s:
+    definition:
+      apiVersion: "apps/v1"
+      kind: "StatefulSet"
+      metadata:
+        name: "zero"
+        namespace: "{{ meta.namespace }}"
+        labels:
+          app: "dgraph"
+          component: "zero"
+      spec:
+        serviceName: "zero"
+        replicas: "{{ zero.size }}"
+        selector:
+          matchLabels:
+            app: "dgraph"
+            component: "zero"
+        template:
+          metadata:
+            labels:
+              app: "dgraph"
+              component: "zero"
+          spec:
+            affinity:
+              podAntiAffinity:
+                preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm:
+                    labelSelector:
+                      matchExpressions:
+                      - key: "app"
+                        operator: "In"
+                        values:
+                        - "zero"
+                    topologyKey: "kubernetes.io/hostname"
+            containers:
+            - name: "zero"
+              image: "dgraph"
+              imagePullPolicy: "IfNotPresent"
+              ports:
+                - containerPort: 5080
+                  name: "zero-grpc"
+                - containerPort: 6080
+                  name: "zero-rest"
+              volumeMounts:
+                - name: "datadir"
+                  mountPath: "/dgraph"
+              env:
+                - name: "POD_NAMESPACE"
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: "metadata.namespace"
+              command:
+                - bash
+                - "-c"
+                - |
+                  set -ex
+                  [[ `hostname` =~ -([0-9]+)$ ]] || exit 1
+                  ordinal=${BASH_REMATCH[1]}
+                  idx=$(($ordinal + 1))
+                  if [[ $ordinal -eq 0 ]]; then
+                    dgraph zero --my=$(hostname -f):5080 --idx $idx --replicas 3
+                  else
+                    dgraph zero --my=$(hostname -f):5080 --peer zero-0.zero.${POD_NAMESPACE}.svc.cluster.local:5080 --idx $idx --replicas {{ zero.size }}
+                  fi
+              resources:
+                limits:
+                  cpu: 1
+                  memory: "1024Mi"
+                requests:
+                  cpu: 1
+                  memory: "1024Mi"
+            terminationGracePeriodSeconds: 60
+            volumes:
+            - name: "datadir"
+              persistentVolumeClaim:
+                claimName: "datadir"
+        updateStrategy:
+          type: "RollingUpdate"
+        volumeClaimTemplates:
+          - metadata:
+              name: "datadir"
+            spec:
+              accessModes:
+                - "ReadWriteOnce"
+              resources:
+                requests:
+                  storage: "{{ zero.storage.size }}"
+              storageClassName: "{{ zero.storage.class_name }}"
+
+
+- name: "create StatefulSet: Alpha"
+  k8s:
+    definition:
+      apiVersion: "apps/v1"
+      kind: "StatefulSet"
+      metadata:
+        name: "alpha"
+        namespace: "{{ meta.namespace }}"
+        labels:
+          app: "dgraph"
+          component: "alpha"
+      spec:
+        serviceName: "alpha"
+        replicas: "{{ alpha.size }}"
+        selector:
+          matchLabels:
+            app: "dgraph"
+            component: "alpha"
+        template:
+          metadata:
+            labels:
+              app: "dgraph"
+              component: "alpha"
+          spec:
+            affinity:
+              podAntiAffinity:
+                preferredDuringSchedulingIgnoredDuringExecution:
+                  - weight: 100
+                    podAffinityTerm:
+                      labelSelector:
+                        matchExpressions:
+                          - key: "app"
+                            operator: "In"
+                            values:
+                              - "alpha"
+                      topologyKey: "kubernetes.io/hostname"
+            containers:
+              - name: "alpha"
+                image: "dgraph"
+                imagePullPolicy: "IfNotPresent"
+                ports:
+                  - containerPort: 7080
+                    name: "alpha-grpc-int"
+                  - containerPort: 8080
+                    name: "alpha-rest"
+                  - containerPort: 9080
+                    name: "alpha-grpc"
+                volumeMounts:
+                  - name: "datadir"
+                    mountPath: "/dgraph"
+                  - name: "dgraph-tls"
+                    mountPath: "/var/run/secrets/dgraph"
+                    readOnly: true
+                env:
+                  - name: "POD_NAMESPACE"
+                    valueFrom:
+                      fieldRef:
+                        fieldPath: "metadata.namespace"
+                  - name: "ADMIN_WHITELIST_IPS"
+                    value: "172.54.0.0:172.54.255.255"
+                command:
+                  - bash
+                  - "-c"
+                  - |
+                    set -ex
+                    dgraph alpha --my=$(hostname -f):7080 --lru_mb 7680 --zero zero-0.zero.${POD_NAMESPACE}.svc.cluster.local:5080 --tls_dir /var/run/secrets/dgraph --whitelist ${ADMIN_WHITELIST_IPS}
+                resources: "{{ alpha.resources }}"
+            volumes:
+              - name: "datadir"
+                persistentVolumeClaim:
+                  claimName: "datadir"
+              - name: "dgraph-tls"
+                secret:
+                  defaultMode: 420
+                  secretName: "dgraph-tls"
+        updateStrategy:
+          type: "RollingUpdate"
+        volumeClaimTemplates:
+          - metadata:
+              name: "datadir"
+              finalizers:
+                - "kubernetes.io/pvc-protection"
+            spec:
+              accessModes:
+                - "ReadWriteOnce"
+              resources:
+                requests:
+                  storage: "{{ zero.storage.size }}"
+              storageClassName: "{{ zero.storage.class_name }}"

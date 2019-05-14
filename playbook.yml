@@ -1,5 +1,6 @@
 - hosts: localhost
   gather_facts: no
   tasks:
+  - debug: msg="Running Dgraph Ansible Operator Playbook"
   - import_role:
       name: "dgraph"

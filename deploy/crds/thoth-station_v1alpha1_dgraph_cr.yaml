@@ -1,7 +1,27 @@
 apiVersion: thoth-station.ninja/v1alpha1
 kind: Dgraph
 metadata:
-  name: example-dgraph
+  name: "dgraph-test"
 spec:
-  # Add fields here
-  size: 3
+  version: "v1.0.14"
+  zero:
+    size: 1
+    hostname:
+      rest: "zero-rest-thoth-test-core.cloud.paas.psi.redhat.com"
+    storage:
+      className: "ceph-dyn-thoth-paas-prod-psi"
+      size: "5Gi"
+  alpha:
+    size: 1
+    resources:
+      limits:
+        cpu: 4
+        memory: "8Gi"
+      requests:
+        cpu: 4
+        memory: "8Gi"
+    hostname:
+      rest: "alpha-rest-thoth-test-core.cloud.paas.psi.redhat.com"
+      grpc: "alpha-grpc-thoth-test-core.cloud.paas.psi.redhat.com"
+  storage:
+    size: "5Gi"
