@@ -1,0 +1,5 @@
+---
+- version: v1alpha1
+  group: thoth-station.ninja
+  kind: Dgraph
+  playbook: /opt/ansible/playbook.yml

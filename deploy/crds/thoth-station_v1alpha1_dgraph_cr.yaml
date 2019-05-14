@@ -1,0 +1,7 @@
+apiVersion: thoth-station.ninja/v1alpha1
+kind: Dgraph
+metadata:
+  name: example-dgraph
+spec:
+  # Add fields here
+  size: 3
