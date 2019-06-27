@@ -1,0 +1,27 @@
+oc login -u hukhan -p hukhan
+oc new-project project1
+cd ~/Projects/dgraph-launcher
+oc create -f storageClass.yaml
+cd dgraphcerts
+
+oc create secret generic dgraph-tls --from-file=./ca.crt --from-file=./ca.key --from-file=./node.crt --from-file=./node.key
+
+# set persistent volumes pv/pv0001 - pv/pv0003 with the following spec field: 
+# storageClassName: ceph-dyn-thoth-paas-prod-psi
+oc edit pv/pv0001
+
+cd /home/hukhan/go/src/github.com/dgraph-operator/deploy
+
+
+oc create -f crds/thoth-station_v1alpha1_dgraph_crd.yaml 
+oc create -f service_account.yaml
+oc create -f role.yaml 
+oc create -f role_binding.yaml 
+
+# Run operator: 
+cd /home/hukhan/go/src/github.com/dgraph-operator
+operator-sdk up local
+
+oc create -f crds/thoth-station_v1alpha1_dgraph_cr.yaml 
+
+# Delete alpha-0 if it starts before zero-0

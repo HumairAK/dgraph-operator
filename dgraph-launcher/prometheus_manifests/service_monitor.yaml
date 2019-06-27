@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: dgraph
+  labels:
+    component: dgraph-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: dgraph
+  params:
+    - web: 8080
+  endpoints:
+    - port: web

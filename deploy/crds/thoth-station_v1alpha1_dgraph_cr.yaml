@@ -3,25 +3,25 @@ kind: Dgraph
 metadata:
   name: "dgraph-test"
 spec:
-  version: "v1.0.14"
+  version: "latest"
   zero:
     size: 1
     hostname:
-      rest: "zero-rest-thoth-test-core.cloud.paas.psi.redhat.com"
+      rest: ""
     storage:
       className: "ceph-dyn-thoth-paas-prod-psi"
-      size: "5Gi"
+      size: "1Gi"
   alpha:
     size: 1
     resources:
       limits:
-        cpu: 4
-        memory: "8Gi"
+        cpu: 1
+        memory: "2Gi"
       requests:
-        cpu: 4
-        memory: "8Gi"
+        cpu: 1
+        memory: "2Gi"
     hostname:
-      rest: "alpha-rest-thoth-test-core.cloud.paas.psi.redhat.com"
-      grpc: "alpha-grpc-thoth-test-core.cloud.paas.psi.redhat.com"
+      rest: ""
+      grpc: ""
   storage:
     size: "5Gi"

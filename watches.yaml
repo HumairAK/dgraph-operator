@@ -2,4 +2,4 @@
 - version: v1alpha1
   group: thoth-station.ninja
   kind: Dgraph
-  playbook: /home/goern/Work/thoth-station/dgraph-operator/playbook.yml
+  playbook: /opt/ansible/playbook.yaml
